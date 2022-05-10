@@ -8,6 +8,9 @@ class Query:
         self.rtype = rtype
         self.nsr_ip = nsr_ip
 
+    def id(self) -> str:
+        return f"{self.q}/{self.rtype}/{self.nsr_ip}"
+
     def __repr__(self) -> str:
         return f"Query({self.q}, {self.rtype}, {self.nsr_ip})"
 
@@ -17,6 +20,10 @@ class QueryBlock:
         self.q = q
         self.rtypes = rtypes
         self.nsr_block = nsr_block
+
+    def id(self) -> str:
+        sorted_query_id_list = sorted([q.id() for q in self.to_query_list()])
+        return ";",join(sorted_query_id_list)
 
     def to_query_list(self) -> List[Query]:
         query_list:List[Query] = []

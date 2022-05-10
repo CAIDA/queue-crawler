@@ -8,7 +8,7 @@ from typing import Callable, List
 import dns
 import socks
 from dns import message as dnsmessage
-from dns import query as dnsquery
+from dns import asyncquery as dnsquery
 from dns import rdatatype
 
 from query import Query
@@ -24,7 +24,7 @@ class Resolver:
     def clean_response(response_record: List[dns.rrset.RRset]):
         return list(chain.from_iterable(map(lambda x: x.to_text().lower().splitlines(), response_record)))
 
-    def query(self, query:Query) -> dict:
+    async def query(self, query:Query) -> dict:
 
         """[summary]
 
@@ -56,7 +56,7 @@ class Resolver:
         """
         while retry and retry_cnt < 3:
             try:
-                response = dnsquery.udp(
+                response = await dnsquery.udp(
                     q=request, where=nameserver_ip, timeout=self.timeout)
                 retry = False
                 answer['status'] = 'SUCCESS'

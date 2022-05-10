@@ -5,6 +5,9 @@ import asyncio
 
 from dns_utils import DNSUtils
 from manager import Manager
+from resolution_queue import ResolutionQueue
+from query_queue import QueryQueue
+from resolver import Resolver
 
 class QueueCrawler:
     def __init__(self, crawl_manager:Manager):
@@ -26,7 +29,13 @@ class QueueCrawler:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--domain-list', required=True)
-    parser.add_argument('--workers', type=int, default=1)
+    parser.add_argument('--crawl-group-size', type=int, default=-1)
+    parser.add_argument('--max-active-resolutions', type=int, default=100)
     args = parser.parse_args()
-    crawler = QueueCrawler(crawl_manager=Manager(crawl_group_size=args.workers))
+    crawler = QueueCrawler(crawl_manager=Manager(
+        crawl_group_size=args.crawl_group_size,
+        resolution_queue=ResolutionQueue(
+            max_active_resolutions=args.max_active_resolutions, 
+            query_queue=QueryQueue(Resolver())),
+    ))
     asyncio.run(crawler.run_domains_from_file(filename=args.domain_list))
