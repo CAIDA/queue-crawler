@@ -23,7 +23,7 @@ class QueryBlock:
 
     def id(self) -> str:
         sorted_query_id_list = sorted([q.id() for q in self.to_query_list()])
-        return ";",join(sorted_query_id_list)
+        return ";".join(sorted_query_id_list)
 
     def to_query_list(self) -> List[Query]:
         query_list:List[Query] = []

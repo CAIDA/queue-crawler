@@ -3,6 +3,7 @@ from collections import defaultdict
 import asyncio
 
 from async_queue import AsyncQueue, AsyncQueueCall
+from dns_parser import DNSParser
 from dns_utils import DNSUtils
 from nsr import NSRBlock
 from query import QueryBlock
@@ -47,11 +48,11 @@ class ResolutionQueue:
         self._running.clear()
         while self.is_running():
             for resolution in self.get_resolution_list(ResolutionStatus.PENDING):
-                load_auth_block_task = asyncio.create_task(resolution.load_auth_block(self))
-                self._queue_shift_tasks.append(load_auth_block_task)
+                load_parent_domain_auth_block_task = asyncio.create_task(resolution.load_parent_domain_auth_block(self))
+                self._queue_shift_tasks.append(load_parent_domain_auth_block_task)
                 self.set_resolution_status(resolution, ResolutionStatus.BLOCKED)
             for resolution in self.get_resolution_list(ResolutionStatus.BLOCKED):
-                if resolution.auth_block:
+                if resolution.ready_for_querying:
                     self.set_resolution_status(resolution, ResolutionStatus.ACTIVE)
             for resolution in self.get_resolution_list(ResolutionStatus.ACTIVE):
                 if resolution.result:
@@ -62,9 +63,9 @@ class ResolutionQueue:
                     self._queue_shift_tasks.append(query_task)
                     self.set_resolution_status(resolution, ResolutionStatus.QUERYING)
             for resolution in self.get_resolution_list(ResolutionStatus.QUERYING):
-                if resolution.result:
+                if resolution.done_querying:
                     self.set_resolution_status(resolution, ResolutionStatus.ACTIVE)
-            await asyncio.sleep(.1)
+            await asyncio.sleep(0)
 
     async def _wait_for(self, resolution:"Resolution"):
         self.resolutions[resolution.status][resolution.id()] = resolution
@@ -87,7 +88,9 @@ class Resolution:
         self.res_type = res_type
         self.status = ResolutionStatus.PENDING
         self._done = asyncio.Event()
-        self.auth_block = None
+        self.ready_for_querying = False
+        self.done_querying = False
+        self.parent_domain_auth_block = None
         self.result = None
 
     def __repr__(self) -> str:
@@ -106,24 +109,42 @@ class Resolution:
 class AuthNSResolution(Resolution):
     def __init__(self, hostname:str):
         super().__init__(hostname, "AuthNS")
+        self.auth_parent = None
+        self.auth_child = None
+        self.query_target_auth_block = None
 
-    async def load_auth_block(self, queue:ResolutionQueue):
+    async def load_parent_domain_auth_block(self, queue:ResolutionQueue):
+        self.ready_for_querying = False
         if self.hostname == ".":
-            self.auth_block = DNSUtils.get_root_nsr_block()
+            self.parent_domain_auth_block = DNSUtils.get_root_nsr_block()
         else:
             parent_domain = DNSUtils.get_parent_domain(self.hostname)
-            auth_block_resolution = AuthNSResolution(parent_domain)
-            self.auth_block = await queue.add(auth_block_resolution)
+            parent_domain_auth_block_resolution = AuthNSResolution(parent_domain)
+            self.parent_domain_auth_block = await queue.add(parent_domain_auth_block_resolution)
+        self.query_target_auth_block = self.parent_domain_auth_block
+        self.ready_for_querying = True
 
 
     async def resolve(self, queue:ResolutionQueue) -> None:
+        self.done_querying = False
         if self.hostname == ".":
             self.result = DNSUtils.get_root_nsr_block()
         else:
-            query_block = QueryBlock(self.hostname,['NS','A'], self.auth_block)
+            print(self.hostname, self.query_target_auth_block)
+            query_block = QueryBlock(self.hostname,['NS','A'], self.query_target_auth_block)
             query_response = await queue._query_queue.dispatch_query(query_block)
-            print(query_response)
-
+            query_response = query_response.data['NS']
+            if query_response.status == "SUCCESS":
+                drm = DNSParser.parse_dns_response_NS(query_response)
+                closest_superdomain = DNSUtils.closest_superdomain(self.hostname, drm.hosts_with_nameservers(), True)
+                if not self.auth_parent:
+                    self.auth_parent = drm.getNSRBlock(closest_superdomain)
+                    self.query_target_auth_block = self.auth_parent
+                elif not self.auth_child:
+                    self.auth_child = drm.getNSRBlock(closest_superdomain)
+                    # Replace with merge of parent and child
+                    self.result = self.auth_child
+        self.done_querying = True
 # class Resolution:
 #     def __init__(self, hostname:str, res_type:str, res_queue:ResolutionQueue):
 #         self.hostname = hostname
