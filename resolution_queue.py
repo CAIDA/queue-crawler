@@ -1,3 +1,4 @@
+from typing import Any, Optional
 from collections import defaultdict
 
 import asyncio
@@ -9,6 +10,12 @@ from nsr import NSRBlock
 from query import QueryBlock
 from query_queue import QueryQueue
 from resolution_status import ResolutionStatus
+from resolution_response_code import ResolutionResponseCode
+
+class ResolutionResponse:
+    def __init__(self, status:ResolutionResponseCode, data:Optional[Any] = None):
+        self.status = status
+        self.data = data
 
 class ResolutionQueue:
     def __init__(self, max_active_resolutions:int, query_queue:QueryQueue):
@@ -54,6 +61,8 @@ class ResolutionQueue:
             for resolution in self.get_resolution_list(ResolutionStatus.BLOCKED):
                 if resolution.ready_for_querying:
                     self.set_resolution_status(resolution, ResolutionStatus.ACTIVE)
+                elif resolution.status == ResolutionStatus.DONE:
+                    resolution.finish()
             for resolution in self.get_resolution_list(ResolutionStatus.ACTIVE):
                 if resolution.result:
                     self.set_resolution_status(resolution, ResolutionStatus.DONE)
@@ -67,12 +76,12 @@ class ResolutionQueue:
                     self.set_resolution_status(resolution, ResolutionStatus.ACTIVE)
             await asyncio.sleep(0)
 
-    async def _wait_for(self, resolution:"Resolution"):
+    async def _wait_for(self, resolution:"Resolution") -> ResolutionResponse:
         self.resolutions[resolution.status][resolution.id()] = resolution
         await resolution._done.wait();
         return resolution.result
 
-    async def add(self, resolution:"Resolution"):
+    async def add(self, resolution:"Resolution") -> ResolutionResponse:
         queue_call_id = resolution.id()
         aqc = AsyncQueueCall(queue_call_id, self._wait_for(resolution))
         result = await self._queue.queue_call(aqc)
@@ -120,7 +129,12 @@ class AuthNSResolution(Resolution):
         else:
             parent_domain = DNSUtils.get_parent_domain(self.hostname)
             parent_domain_auth_block_resolution = AuthNSResolution(parent_domain)
-            self.parent_domain_auth_block = await queue.add(parent_domain_auth_block_resolution)
+            res = await queue.add(parent_domain_auth_block_resolution)
+            if res.status == ResolutionResponseCode.ERROR:
+                self.result = res
+                self.status = ResolutionStatus.DONE
+                return
+            self.parent_domain_auth_block = res.data
         self.query_target_auth_block = self.parent_domain_auth_block
         self.ready_for_querying = True
 
@@ -128,23 +142,41 @@ class AuthNSResolution(Resolution):
     async def resolve(self, queue:ResolutionQueue) -> None:
         self.done_querying = False
         if self.hostname == ".":
-            self.result = DNSUtils.get_root_nsr_block()
+            self.result = ResolutionResponse(ResolutionResponseCode.SUCCESS, DNSUtils.get_root_nsr_block())
         else:
-            print(self.hostname, self.query_target_auth_block)
-            query_block = QueryBlock(self.hostname,['NS','A'], self.query_target_auth_block)
-            query_response = await queue._query_queue.dispatch_query(query_block)
-            query_response = query_response.data['NS']
-            if query_response.status == "SUCCESS":
-                drm = DNSParser.parse_dns_response_NS(query_response)
-                closest_superdomain = DNSUtils.closest_superdomain(self.hostname, drm.hosts_with_nameservers(), True)
-                if not self.auth_parent:
-                    self.auth_parent = drm.getNSRBlock(closest_superdomain)
-                    self.query_target_auth_block = self.auth_parent
-                elif not self.auth_child:
-                    self.auth_child = drm.getNSRBlock(closest_superdomain)
-                    # Replace with merge of parent and child
-                    self.result = self.auth_child
+            if len(self.query_target_auth_block.nsr_list) == 0:
+                self.result = ResolutionResponse(ResolutionResponseCode.WARNING, NSRBlock(self.hostname))
+            else:
+                query_block = QueryBlock(self.hostname,['NS','A'], self.query_target_auth_block)
+                query_response = await queue._query_queue.dispatch_query(query_block)
+                query_response = query_response.data['NS']
+                if query_response.status == "SUCCESS":
+                    if query_response.rcode == "NOERROR":
+                        drm = DNSParser.parse_dns_response_NS(query_response)
+                        closest_superdomain = DNSUtils.closest_superdomain(self.hostname, drm.hosts_with_nameservers(), True)
+                        nsr_block = drm.getNSRBlock(closest_superdomain)
+                        if nsr_block is None:
+                            if len(drm.get_rtype_records('soa')) > 0:
+                                # Empty non-terminal
+                                nsr_block = self.query_target_auth_block
+                            else:
+                                nsr_block = NSRBlock(self.hostname)
+                        if not self.auth_parent:
+                            self.auth_parent = nsr_block
+                            self.query_target_auth_block = self.auth_parent
+                        elif not self.auth_child:
+                            self.auth_child = nsr_block
+                            # Replace with merge of parent and child
+                            self.result = ResolutionResponse(ResolutionResponseCode.SUCCESS, self.auth_child)
+                    else:
+                        # NXDOMAIN
+                        self.result = ResolutionResponse(ResolutionResponseCode.ERROR)
+                else:
+                    # Query timeout
+                    self.result = ResolutionResponse(ResolutionResponseCode.WARNING, NSRBlock(self.hostname))
         self.done_querying = True
+
+
 # class Resolution:
 #     def __init__(self, hostname:str, res_type:str, res_queue:ResolutionQueue):
 #         self.hostname = hostname
@@ -155,10 +187,6 @@ class AuthNSResolution(Resolution):
 
 #     async def resolve() -> ResolutionResponse:
 #         pass
-
-# class ResolutionResponse:
-#     def __init__(self, data=None):
-#         self.data = data
 
 # class IPResolution(Resolution):
 #     def __init__(self, hostname:str):

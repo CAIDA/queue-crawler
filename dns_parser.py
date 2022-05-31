@@ -3,20 +3,29 @@ from collections import defaultdict
 
 from host import NamedHost
 from nsr import NSR, NSRBlock
-from resolver import DNSResponse, RR
+from resolver import DNSResponse, RR, RRCollection
 
 class DNSRelationMap:
     def __init__(self):
         self._hosts = {}
         self._host_nsr = defaultdict(set)
+        self._records = RRCollection()
 
     def storeNS(self, rr:RR) -> None:
+        self.store(rr)
         self._host_nsr[rr.name].add(rr.rdata)
 
     def storeA(self, rr:RR) -> None:
+        self.store(rr)
         if rr.name not in self._hosts:
             self._hosts[rr.name] = NamedHost(rr.name)
         self._hosts[rr.name].add(rr.rdata)
+
+    def store(self, rr:RR) -> None:
+        self._records.add(rr)
+
+    def get_rtype_records(self, rtype:str) -> List[RR]:
+        return self._records.get_rtype_records(rtype)
 
     def hosts_with_nameservers(self) -> List[str]:
         return list(self._host_nsr.keys())
@@ -70,4 +79,11 @@ class DNSParser:
             drm.storeA(rr)
         for rr in response.additional.get_rtype_records('a'):
             drm.storeA(rr)
+        
+        for rr in response.answer.get_rtype_records('soa'):
+            drm.store(rr)
+        for rr in response.authority.get_rtype_records('soa'):
+            drm.store(rr)
+        for rr in response.additional.get_rtype_records('soa'):
+            drm.store(rr)
         return drm

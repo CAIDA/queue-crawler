@@ -29,4 +29,5 @@ class Manager:
         for domain in crawl_group.domains:
             resolution = AuthNSResolution(domain)
             resolution_list.append(self.resolution_queue.add(resolution))
-        await asyncio.gather(*resolution_list)
+        res_response = await asyncio.gather(*resolution_list)
+        print([x.status.name for x in res_response])
