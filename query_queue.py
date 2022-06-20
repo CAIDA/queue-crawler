@@ -8,6 +8,7 @@ from query import QueryBlock, Query
 from resolver import Resolver, DNSResponse
 
 class QueryQueueResponse:
+    ''' Return the result of a block of DNS queries'''
     def __init__(self, query_block:QueryBlock, dns_response_list:List[DNSResponse]):
         self.query_block = query_block
         self.data = {}
@@ -17,6 +18,13 @@ class QueryQueueResponse:
 
 
 class QueryQueue:
+    ''' An queue for DNS queries
+    
+    Attributes
+    _query_block_queue - Queue which caches whole blocks of DNS queries
+    _query_queue - Queue which caches individual DNS queries
+    _resolver - Resolver instance handling queries
+    '''
     def __init__(self, resolver:Resolver):
         self._query_block_queue = AsyncQueue()
         self._query_queue = AsyncQueue()

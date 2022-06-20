@@ -16,8 +16,10 @@ from query import Query
 from dns_utils import DNSUtils
 
 
+# A single resource record
 RR = namedtuple('RR', ['name', 'ttl', 'rclass', 'rtype', 'rdata'])
 
+# A collections of RRSets
 class RRCollection:
     def __init__(self):
         self._records = defaultdict(set)
@@ -25,11 +27,13 @@ class RRCollection:
     def add(self, rr:RR) -> None:
         self._records[rr.rtype].add(rr)
 
+    # Return all records of a particular type
     def get_rtype_records(self, rtype:str) -> List[RR]:
         if rtype not in self._records:
             return []
         return list(self._records[rtype])
 
+    # Return all records in a list
     def records(self) -> List[RR]:
         combined_rr_set = set()
         for s in self._records.values():

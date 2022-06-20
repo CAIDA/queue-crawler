@@ -27,6 +27,7 @@ class DNSUtils:
         else:
             return domain.endswith("."+superdomain)
 
+    '''Return the superdomain which is the fewest labels above the given domain'''
     @staticmethod
     def closest_superdomain(domain:str, superdomain_list:List[str], include_identical=False) -> Optional[str]:
         superdomain_list = [(len(s), s) for s in superdomain_list if DNSUtils.is_superdomain(domain, s, include_identical)]

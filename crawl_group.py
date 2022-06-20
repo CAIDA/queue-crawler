@@ -1,4 +1,5 @@
 class CrawlGroup:
+    '''Limits the number of domains resolved simultaneously'''
     def __init__(self, size:int):
         self.size = size
         self.domains = []

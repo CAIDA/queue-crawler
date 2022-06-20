@@ -10,6 +10,7 @@ from query_queue import QueryQueue
 from resolver import Resolver
 
 class QueueCrawler:
+    ''' Initiates a crawl of a list of domains from a file '''
     def __init__(self, crawl_manager:Manager):
         self.crawl_manager = crawl_manager
 

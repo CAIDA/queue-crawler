@@ -1,0 +1,4 @@
+asyncio==3.4.3
+dnspython==2.2.1
+NEURON==7.8
+PySocks==1.7.1

@@ -3,6 +3,7 @@ from typing import List
 from nsr import NSRBlock
 
 class Query:
+    ''' Represents a single DNS query sent to a single nameserver'''
     def __init__(self,  q: str, rtype:str, nsr_ip:str):
         self.q = q
         self.rtype = rtype
@@ -16,6 +17,7 @@ class Query:
 
     
 class QueryBlock:
+    ''' Represents a single DNS query sent to a collection of nameserver '''
     def __init__(self,  q: str, rtypes:List[str], nsr_block:NSRBlock):
         self.q = q
         self.rtypes = rtypes

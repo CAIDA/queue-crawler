@@ -2,6 +2,7 @@ from typing import Optional
 import asyncio
 
 class AsyncQueueCall:
+    ''' A single cacheable asynchronous crawl '''
     def __init__(self, call_id:str, f, uuid:Optional[str]=None):
         self.id = call_id
         self.f = f
@@ -14,6 +15,8 @@ class AsyncQueueCall:
         return f"`{repr_str}`"
 
 class AsyncQueue:
+    ''' Caches crawl responses, and blocks duplicate async calls, 
+        returning the cached response once the original call returns'''
     def __init__(self):
         self.past_calls = {}
         self.active_calls = {}

@@ -6,6 +6,7 @@ from nsr import NSR, NSRBlock
 from resolver import DNSResponse, RR, RRCollection
 
 class DNSRelationMap:
+    ''' Stores host-ns relationships '''
     def __init__(self):
         self._hosts = {}
         self._host_nsr = defaultdict(set)
@@ -43,6 +44,7 @@ class DNSRelationMap:
         return nb
 
 class DNSParser:
+    ''' Extracts the important relationships from a DNS Response '''
     @staticmethod
     def parse_dns_response_A(response: DNSResponse) -> DNSRelationMap:
         auth_nsset = None
